@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId "ai.mlc.mlcchat"
-        minSdk 26
+        minSdk 27
         targetSdk 33
         versionCode 1
         versionName "1.0"
@@ -70,5 +70,8 @@ dependencies {
     androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
     debugImplementation 'androidx.compose.ui:ui-tooling'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
+    // Web3j needed for the WalletSDK
+    implementation 'org.web3j:core:4.8.8-android'
+    implementation 'com.github.EthereumPhone:WalletSDK:0.0.10'
 
 }

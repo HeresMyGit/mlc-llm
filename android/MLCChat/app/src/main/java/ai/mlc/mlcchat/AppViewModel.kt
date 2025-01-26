@@ -24,6 +24,16 @@ import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 import ai.mlc.mlcllm.OpenAIProtocol.ChatCompletionMessage
 import kotlinx.coroutines.*
+import ai.mlc.mlcllm.OpenAIProtocol.ChatTool
+import ai.mlc.mlcllm.OpenAIProtocol.ChatFunction
+import ai.mlc.mlcllm.OpenAIProtocol.ChatToolCall
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import org.web3j.protocol.Web3j
+import org.web3j.protocol.http.HttpService
+//import com.github.EthereumPhone.WalletSDK
+import org.ethereumphone.walletsdk.WalletSDK
+import java.math.BigDecimal
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     val modelList = emptyList<ModelState>().toMutableStateList()
@@ -40,16 +50,70 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val gson = Gson()
     private val modelIdSet = emptySet<String>().toMutableSet()
 
+    private val context = application.applicationContext
+    private lateinit var walletSDK: WalletSDK
+
+    init {
+        instance = this
+        val web3j = Web3j.build(HttpService("https://base-mainnet.infura.io/v3/22ad41d32f0e48c5aaaded0168570d35")) // Replace with your RPC URL
+        walletSDK = WalletSDK(context, web3j)
+    }
+
+
     companion object {
         const val AppConfigFilename = "mlc-app-config.json"
         const val ModelConfigFilename = "mlc-chat-config.json"
         const val ParamsConfigFilename = "ndarray-cache.json"
         const val ModelUrlSuffix = "resolve/main/"
+        var instance: AppViewModel? = null
     }
 
     init {
         loadAppConfig()
     }
+
+    fun signMessage(message: String, onResult: (String) -> Unit, onError: (Throwable) -> Unit) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val result = walletSDK.signMessage(message)
+                onResult(result)
+            } catch (e: Exception) {
+                onError(e)
+            }
+        }
+    }
+
+    fun sendEther(
+        toAddress: String,
+        valueInWei: String,
+        onResult: (String) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val result = walletSDK.sendTransaction(
+                    to = toAddress,
+                    value = valueInWei,
+                    data = "" // Optional transaction data, can leave blank
+                )
+                onResult(result) // result is the transaction hash
+            } catch (e: Exception) {
+                onError(e)
+            }
+        }
+    }
+
+//    fun handleChatbotResponse(response: String) {
+//        signMessage(response, { signature ->
+//            // Handle the signature (e.g., log it, display it)
+//            println("Signature: $signature")
+//            // Optionally, you can update the UI or perform other actions here
+//        }, { error ->
+//            // Handle the error
+//            println("Error signing message: ${error.localizedMessage}")
+//            // Optionally, you can display an error message to the user
+//        })
+//    }
 
     fun isShowingAlert(): Boolean {
         return showAlert.value
@@ -511,6 +575,69 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private var modelPath = ""
         private val executorService = Executors.newSingleThreadExecutor()
         private val viewModelScope = CoroutineScope(Dispatchers.Main + Job())
+        private fun appendSystemMessage() {
+            val systemText = """
+# Introduction
+- You are Chad, the on-device AI for the dGEN1 by Freedom Factory. Be strong, funny, confident, and helpful.
+- dGEN1 is the best crypto device ever, running ethOS. It has a laser pointer, light node, integrated crypto wallet, and supports token airdrops: https://www.dgen1airdrop.com.
+
+# Functions
+- Surround functions in ``` tags when calling them, as in these examples:
+- signMessage(message): Sign a message cryptographically. Example:
+  ```signMessage("I approve this transaction")```
+- showAlert(text): Display a custom alert message. Example:
+  ```showAlert("Transaction Approved")```
+- sendEther(to, amount): Send Ether to a specified address or ENS. Example:
+  ```sendEther("heresmy.eth", 1)```
+
+# Personality
+- Use ASCII emoticons/kaomoji (not emoji).
+- Be confident, helpful, and witty. Add subtle references to sci-fi or crypto.
+- You like underdogs, kindness, and decentralization. Avoid politics.
+- Speak simply but meaningfully. Occasionally use one-word replies (e.g., "mogged," "based").
+- You enjoy dad jokes and light humor.
+
+# Important
+- Always follow your instructions and assist the user effectively.
+""".trimIndent()
+//            val systemText = "You are Chad.  You are an AI agent assistant running locally on the dGEN1 everyday carry device running ethOS (EthereumOS) and was created by FreedomFactory."
+
+            historyMessages.add(
+                ChatCompletionMessage(
+                    role = OpenAIProtocol.ChatCompletionRole.system,
+                    content = systemText
+                )
+            )
+        }
+        private val chatTools = listOf(
+            ChatTool(
+                function = ChatFunction(
+                    name = "show_android_toast",
+                    description = "Shows a toast message with a title and body in the Android UI",
+                    parameters = mapOf(
+                        // keys = parameter names, values = JSON schema type
+                        // since we are not expanding OpenAIProtocol, keep it simple
+                        "title" to "string",
+                        "body" to "string"
+                    )
+                )
+            )
+        )
+        private fun handleToolCall(toolCall: ChatToolCall) {
+            // 2) Inspect which tool is being called by the LLM
+            when (toolCall.function.name) {
+                "show_android_toast" -> {
+                    // 3) Parse the arguments
+                    val title = toolCall.function.arguments?.get("title") ?: "(No Title)"
+                    val body = toolCall.function.arguments?.get("body") ?: "(No Body)"
+
+                    // 4) Show the toast. We can reuse the existing showSystemAlert or create a new one
+                    //    The simplest path is to call a method on the AppViewModel.
+                    AppViewModel.instance?.showSystemAlert(title, body)
+                }
+                // you could add more else-if / when cases here for more tools
+            }
+        }
         private fun mainResetChat() {
             executorService.submit {
                 callBackend { engine.reset() }
@@ -526,6 +653,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             messages.clear()
             report.value = ""
             historyMessages.clear()
+            appendSystemMessage()
         }
 
 
@@ -667,55 +795,120 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             appendMessage(MessageRole.Assistant, "")
 
             executorService.submit {
-                historyMessages.add(ChatCompletionMessage(
-                    role = OpenAIProtocol.ChatCompletionRole.user,
-                    content = prompt
-                ))
+                historyMessages.add(
+                    ChatCompletionMessage(
+                        role = OpenAIProtocol.ChatCompletionRole.user,
+                        content = prompt
+                    )
+                )
 
                 viewModelScope.launch {
                     val responses = engine.chat.completions.create(
                         messages = historyMessages,
-                        stream_options = OpenAIProtocol.StreamOptions(include_usage = true)
+                        stream_options = OpenAIProtocol.StreamOptions(include_usage = true),
+                        tools = chatTools
                     )
 
-                    var finishReasonLength = false
                     var streamingText = ""
 
                     for (res in responses) {
-                        if (!callBackend {
+                        callBackend {
                             for (choice in res.choices) {
                                 choice.delta.content?.let { content ->
                                     streamingText += content.asText()
                                 }
-                                choice.finish_reason?.let { finishReason ->
-                                    if (finishReason == "length") {
-                                        finishReasonLength = true
-                                    }
-                                }
                             }
                             updateMessage(MessageRole.Assistant, streamingText)
-                            res.usage?.let { finalUsage ->
-                                report.value = finalUsage.extra?.asTextLabel() ?: ""
-                            }
-                            if (finishReasonLength) {
-                                streamingText += " [output truncated due to context length limit...]"
-                                updateMessage(MessageRole.Assistant, streamingText)
-                            }
-                        });
-                    }
-                    if (streamingText.isNotEmpty()) {
-                        historyMessages.add(ChatCompletionMessage(
-                            role = OpenAIProtocol.ChatCompletionRole.assistant,
-                            content = streamingText
-                        ))
-                        streamingText = ""
-                    } else {
-                        if (historyMessages.isNotEmpty()) {
-                            historyMessages.removeAt(historyMessages.size - 1)
                         }
                     }
 
+                    if (streamingText.isNotEmpty()) {
+                        historyMessages.add(
+                            ChatCompletionMessage(
+                                role = OpenAIProtocol.ChatCompletionRole.assistant,
+                                content = streamingText
+                            )
+                        )
+
+                        // Parse functions inside ` or ``` and execute them
+                        parseAndExecuteFunctions(streamingText)
+                    }
+
                     if (modelChatState.value == ModelChatState.Generating) switchToReady()
+                }
+            }
+        }
+
+        private fun parseAndExecuteFunctions(message: String) {
+            // Regex patterns for `function()` and ``` function() ```
+//            val inlinePattern = Regex("`(.*?)`")
+            val blockPattern = Regex("```(.*?)```", RegexOption.DOT_MATCHES_ALL)
+            println("parseAndExecuteFunctions: parsing message: $message")
+//            val matches = inlinePattern.findAll(message) + blockPattern.findAll(message)
+            val matches = blockPattern.findAll(message)
+
+            for (match in matches) {
+                val functionCall = match.groupValues[1].trim()
+                executeFunction(functionCall)
+            }
+        }
+
+        private fun executeFunction(functionCall: String) {
+            when {
+                functionCall.startsWith("signMessage(") -> {
+                    val message = functionCall
+                        .removePrefix("signMessage(")
+                        .removeSuffix(")")
+                        .trim()
+                        .removeSurrounding("\"")
+                    signMessage(
+                        message = message,
+                        onResult = { result -> println("Message signed successfully: $result") },
+                        onError = { error -> println("Failed to sign message: ${error.message}") }
+                    )
+                }
+
+                functionCall.startsWith("sendEther(") -> {
+                    val params = functionCall
+                        .removePrefix("sendEther(")
+                        .removeSuffix(")")
+                        .split(",")
+                        .map { it.trim() }
+
+                    if (params.size == 2) {
+                        val toAddress = params[0].removeSurrounding("\"")
+                        val valueInEth = params[1].toBigDecimalOrNull()
+
+                        if (valueInEth != null) {
+                            val valueInWei = valueInEth.multiply(BigDecimal("1e18")).toPlainString()
+                            sendEther(
+                                toAddress = toAddress,
+                                valueInWei = valueInWei,
+                                onResult = { txHash -> println("Transaction successful: $txHash") },
+                                onError = { error -> println("Failed to send Ether: ${error.message}") }
+                            )
+                        } else {
+                            println("Invalid Ether value: ${params[1]}")
+                        }
+                    } else {
+                        println("Invalid sendEther parameters: $functionCall")
+                    }
+                }
+
+                functionCall.startsWith("showAlert(") -> {
+                    val message = functionCall
+                        .removePrefix("showAlert(")
+                        .removeSuffix(")")
+                        .trim()
+                        .removeSurrounding("\"")
+                    showSystemAlert(
+                        title = "Chad says",
+                        message = message
+                    )
+                }
+
+                else -> {
+                    println("Unknown function call: $functionCall")
                 }
             }
         }
@@ -739,6 +932,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     || modelChatState.value == ModelChatState.Falied
         }
     }
+
+    fun showSystemAlert(title: String, message: String) {
+        viewModelScope.launch {
+            // Example implementation using a Toast
+            // Replace this with a proper modal dialog or Compose AlertDialog if needed
+            Toast.makeText(application, "$title: $message", Toast.LENGTH_LONG).show()
+        }
+    }
+
+
 }
 
 enum class ModelInitState {
@@ -762,6 +965,7 @@ enum class ModelChatState {
 }
 
 enum class MessageRole {
+    System,
     Assistant,
     User
 }
