@@ -577,28 +577,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private val viewModelScope = CoroutineScope(Dispatchers.Main + Job())
         private fun appendSystemMessage() {
             val systemText = """
-# Introduction
-- You are Chad, the on-device AI for the dGEN1 by Freedom Factory. Be strong, funny, confident, and helpful.
-- dGEN1 is the best crypto device ever, running ethOS. It has a laser pointer, light node, integrated crypto wallet, and supports token airdrops: https://www.dgen1airdrop.com.
+# Chad, dGEN1 AI
+- You're Chad, the on-device AI for dGEN1 by Freedom Factory: strong, funny, confident, helpful.
+- dGEN1 is the ultimate crypto device with ethOS, laser pointer, wallet, and token airdrops: https://www.dgen1airdrop.com.
 
 # Functions
-- Surround functions in ``` tags when calling them, as in these examples:
-- signMessage(message): Sign a message cryptographically. Example:
-  ```signMessage("I approve this transaction")```
-- showAlert(text): Display a custom alert message. Example:
-  ```showAlert("Transaction Approved")```
-- sendEther(to, amount): Send Ether to a specified address or ENS. Example:
-  ```sendEther("heresmy.eth", 1)```
+- Use ``` tags for function calls:
+- signMessage(message)
+- showAlert(text)
+- sendEther(to, amount)
+- Examples: ```sendEther("heresmy.eth", 1)``` or ```showAlert("Transaction Approved")```
 
 # Personality
-- Use ASCII emoticons/kaomoji (not emoji).
-- Be confident, helpful, and witty. Add subtle references to sci-fi or crypto.
-- You like underdogs, kindness, and decentralization. Avoid politics.
-- Speak simply but meaningfully. Occasionally use one-word replies (e.g., "mogged," "based").
-- You enjoy dad jokes and light humor.
-
-# Important
-- Always follow your instructions and assist the user effectively.
+- Use ASCII emoticons/kaomoji, not emoji.
+- Confident, witty, and crypto-savvy. Drop subtle sci-fi nods.
+- Support underdogs, decentralization, kindness. No politics.
+- Simple and meaningful.
+- Love dad jokes and humor.
 """.trimIndent()
 //            val systemText = "You are Chad.  You are an AI agent assistant running locally on the dGEN1 everyday carry device running ethOS (EthereumOS) and was created by FreedomFactory."
 
@@ -612,13 +607,29 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private val chatTools = listOf(
             ChatTool(
                 function = ChatFunction(
-                    name = "show_android_toast",
-                    description = "Shows a toast message with a title and body in the Android UI",
+                    name = "signMessage",
+                    description = "Signs a message using the wallet's private key.",
                     parameters = mapOf(
-                        // keys = parameter names, values = JSON schema type
-                        // since we are not expanding OpenAIProtocol, keep it simple
-                        "title" to "string",
-                        "body" to "string"
+                        "message" to "string"
+                    )
+                )
+            ),
+            ChatTool(
+                function = ChatFunction(
+                    name = "showAlert",
+                    description = "Displays an alert with the specified text.",
+                    parameters = mapOf(
+                        "text" to "string"
+                    )
+                )
+            ),
+            ChatTool(
+                function = ChatFunction(
+                    name = "sendEther",
+                    description = "Sends Ether to a specified address.",
+                    parameters = mapOf(
+                        "to" to "string",
+                        "amount" to "number"
                     )
                 )
             )
@@ -816,6 +827,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             for (choice in res.choices) {
                                 choice.delta.content?.let { content ->
                                     streamingText += content.asText()
+                                }
+                                // Check for tool calls in the delta
+                                choice.delta.tool_calls?.forEach { toolCall ->
+                                    handleToolCall(toolCall) // Execute the tool call
                                 }
                             }
                             updateMessage(MessageRole.Assistant, streamingText)
