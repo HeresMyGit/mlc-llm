@@ -589,7 +589,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 - Examples: ```sendEther("heresmy.eth", 1)``` or ```showAlert("Transaction Approved")```
 
 # Personality
-- Use ASCII emoticons/kaomoji, not emoji.
+- Use ASCII emoticons/kaomoji ^-^ t(-_-)t (╯°□°)╯︵ ┻━┻.
 - Confident, witty, and crypto-savvy. Drop subtle sci-fi nods.
 - Support underdogs, decentralization, kindness. No politics.
 - Simple and meaningful.
@@ -635,20 +635,62 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             )
         )
         private fun handleToolCall(toolCall: ChatToolCall) {
-            // 2) Inspect which tool is being called by the LLM
             when (toolCall.function.name) {
-                "show_android_toast" -> {
-                    // 3) Parse the arguments
-                    val title = toolCall.function.arguments?.get("title") ?: "(No Title)"
-                    val body = toolCall.function.arguments?.get("body") ?: "(No Body)"
-
-                    // 4) Show the toast. We can reuse the existing showSystemAlert or create a new one
-                    //    The simplest path is to call a method on the AppViewModel.
-                    AppViewModel.instance?.showSystemAlert(title, body)
+                "signMessage" -> {
+                    val message = toolCall.function.arguments?.get("message") ?: ""
+                    signMessage(
+                        message = message,
+                        onResult = { result ->
+                            println("Message signed successfully: $result")
+                            appendMessage(MessageRole.Assistant, "Message signed: $result")
+                        },
+                        onError = { error ->
+                            println("Failed to sign message: ${error.message}")
+                            appendMessage(MessageRole.Assistant, "Error signing message: ${error.message}")
+                        }
+                    )
                 }
-                // you could add more else-if / when cases here for more tools
+
+                "sendEther" -> {
+                    val toAddress = toolCall.function.arguments?.get("to") ?: ""
+                    val amount = toolCall.function.arguments?.get("amount")?.toString()?.toBigDecimalOrNull()
+
+                    if (amount != null) {
+                        val valueInWei = amount.multiply(BigDecimal("1e18")).toPlainString()
+                        sendEther(
+                            toAddress = toAddress,
+                            valueInWei = valueInWei,
+                            onResult = { txHash ->
+                                println("Transaction successful: $txHash")
+                                appendMessage(MessageRole.Assistant, "Transaction successful: $txHash")
+                            },
+                            onError = { error ->
+                                println("Failed to send Ether: ${error.message}")
+                                appendMessage(MessageRole.Assistant, "Error sending Ether: ${error.message}")
+                            }
+                        )
+                    } else {
+                        println("Invalid Ether value in sendEther call")
+                        appendMessage(MessageRole.Assistant, "Error: Invalid Ether value in sendEther call")
+                    }
+                }
+
+                "showAlert" -> {
+                    val text = toolCall.function.arguments?.get("text") ?: "No message provided"
+                    showSystemAlert(
+                        title = "Chad says",
+                        message = text
+                    )
+                    appendMessage(MessageRole.Assistant, "Alert displayed: $text")
+                }
+
+                else -> {
+                    println("Unknown tool call: ${toolCall.function.name}")
+                    appendMessage(MessageRole.Assistant, "Error: Unknown tool call '${toolCall.function.name}'")
+                }
             }
         }
+
         private fun mainResetChat() {
             executorService.submit {
                 callBackend { engine.reset() }
@@ -855,15 +897,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         private fun parseAndExecuteFunctions(message: String) {
-            // Regex patterns for `function()` and ``` function() ```
-//            val inlinePattern = Regex("`(.*?)`")
-            val blockPattern = Regex("```(.*?)```", RegexOption.DOT_MATCHES_ALL)
-            println("parseAndExecuteFunctions: parsing message: $message")
-//            val matches = inlinePattern.findAll(message) + blockPattern.findAll(message)
-            val matches = blockPattern.findAll(message)
+            // Regex pattern to match function calls, e.g., functionName("arg1", 123)
+            val functionPattern = Regex("""(\w+)\((.*?)\)""")
+
+            println("Parsing message for function calls: $message")
+
+            // Find all function call matches
+            val matches = functionPattern.findAll(message)
 
             for (match in matches) {
-                val functionCall = match.groupValues[1].trim()
+                val functionCall = match.value.trim()
                 executeFunction(functionCall)
             }
         }

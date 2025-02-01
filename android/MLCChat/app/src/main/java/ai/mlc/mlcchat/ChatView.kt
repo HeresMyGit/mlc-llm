@@ -62,7 +62,7 @@ fun ChatView(
         TopAppBar(
             title = {
                 Text(
-                    text = "MLCChat: " + chatState.modelName.value.split("-")[0],
+                    text = "Chad: " + chatState.modelName.value.split("-")[0],
                     color = MaterialTheme.colorScheme.onPrimary
                 )
             },
