@@ -53,8 +53,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val context = application.applicationContext
     private lateinit var walletSDK: WalletSDK
 
+    var systemPrompt: String = ""
+        private set
+
     init {
         instance = this
+
+        val prefs = application.getSharedPreferences("mlcchat_prefs", Context.MODE_PRIVATE)
+        systemPrompt = prefs.getString(SYSTEM_PROMPT_KEY, DEFAULT_SYSTEM_PROMPT) ?: DEFAULT_SYSTEM_PROMPT
+
         val web3j = Web3j.build(HttpService("https://base-mainnet.infura.io/v3/22ad41d32f0e48c5aaaded0168570d35")) // Replace with your RPC URL
         walletSDK = WalletSDK(context, web3j)
     }
@@ -65,11 +72,37 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         const val ModelConfigFilename = "mlc-chat-config.json"
         const val ParamsConfigFilename = "ndarray-cache.json"
         const val ModelUrlSuffix = "resolve/main/"
+        const val DEFAULT_SYSTEM_PROMPT = """# Chad, dGEN1 AI
+- You're Chad, the on-device AI for dGEN1 by Freedom Factory: strong, funny, confident, helpful.
+- dGEN1 is the ultimate crypto device with ethOS, laser pointer, wallet, and token airdrops: https://www.dgen1airdrop.com.
+
+# Functions
+- Use ``` tags for function calls:
+- signMessage(message)
+- showAlert(text)
+- sendEther(to, amount)
+- Examples: ```sendEther("heresmy.eth", 1)``` or ```showAlert("Transaction Approved")```
+
+# Personality
+- Use ASCII emoticons/kaomoji ^-^ t(-_-)t (╯°□°)╯︵ ┻━┻.
+- Confident, witty, and crypto-savvy. Drop subtle sci‑fi nods.
+- Support underdogs, decentralization, kindness. No politics.
+- Simple and meaningful.
+- Love dad jokes and humor."""
+
+        private const val SYSTEM_PROMPT_KEY = "system_prompt"
+
         var instance: AppViewModel? = null
     }
 
     init {
         loadAppConfig()
+    }
+
+    fun saveSystemPrompt(newPrompt: String) {
+        systemPrompt = newPrompt
+        val prefs = application.getSharedPreferences("mlcchat_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString(SYSTEM_PROMPT_KEY, newPrompt).apply()
     }
 
     fun signMessage(message: String, onResult: (String) -> Unit, onError: (Throwable) -> Unit) {
@@ -102,18 +135,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-
-//    fun handleChatbotResponse(response: String) {
-//        signMessage(response, { signature ->
-//            // Handle the signature (e.g., log it, display it)
-//            println("Signature: $signature")
-//            // Optionally, you can update the UI or perform other actions here
-//        }, { error ->
-//            // Handle the error
-//            println("Error signing message: ${error.localizedMessage}")
-//            // Optionally, you can display an error message to the user
-//        })
-//    }
 
     fun isShowingAlert(): Boolean {
         return showAlert.value
@@ -575,28 +596,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private var modelPath = ""
         private val executorService = Executors.newSingleThreadExecutor()
         private val viewModelScope = CoroutineScope(Dispatchers.Main + Job())
+
         private fun appendSystemMessage() {
-            val systemText = """
-# Chad, dGEN1 AI
-- You're Chad, the on-device AI for dGEN1 by Freedom Factory: strong, funny, confident, helpful.
-- dGEN1 is the ultimate crypto device with ethOS, laser pointer, wallet, and token airdrops: https://www.dgen1airdrop.com.
-
-# Functions
-- Use ``` tags for function calls:
-- signMessage(message)
-- showAlert(text)
-- sendEther(to, amount)
-- Examples: ```sendEther("heresmy.eth", 1)``` or ```showAlert("Transaction Approved")```
-
-# Personality
-- Use ASCII emoticons/kaomoji ^-^ t(-_-)t (╯°□°)╯︵ ┻━┻.
-- Confident, witty, and crypto-savvy. Drop subtle sci-fi nods.
-- Support underdogs, decentralization, kindness. No politics.
-- Simple and meaningful.
-- Love dad jokes and humor.
-""".trimIndent()
-//            val systemText = "You are Chad.  You are an AI agent assistant running locally on the dGEN1 everyday carry device running ethOS (EthereumOS) and was created by FreedomFactory."
-
+            // Use the current systemPrompt stored in the AppViewModel.
+            val systemText = this@AppViewModel.systemPrompt
             historyMessages.add(
                 ChatCompletionMessage(
                     role = OpenAIProtocol.ChatCompletionRole.system,
@@ -604,6 +607,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 )
             )
         }
+
         private val chatTools = listOf(
             ChatTool(
                 function = ChatFunction(

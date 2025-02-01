@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import dev.jeziellago.compose.markdowntext.MarkdownText
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.filled.Info
 
 @ExperimentalMaterial3Api
 @Composable
@@ -90,6 +91,16 @@ fun ChatView(
                         tint = MaterialTheme.colorScheme.onPrimary
                     )
                 }
+                IconButton(
+                onClick = { navController.navigate("prompt") },
+                enabled = chatState.interruptable()
+                ) {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = "Edit System Prompt",
+                    tint = MaterialTheme.colorScheme.onPrimary
+                )
+            }
             })
     }, modifier = Modifier.pointerInput(Unit) {
         detectTapGestures(onTap = {
