@@ -34,6 +34,7 @@ import org.web3j.protocol.http.HttpService
 //import com.github.EthereumPhone.WalletSDK
 import org.ethereumphone.walletsdk.WalletSDK
 import java.math.BigDecimal
+import android.util.Log
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     val modelList = emptyList<ModelState>().toMutableStateList()
@@ -56,11 +57,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var systemPrompt: String = ""
         private set
 
+    val openAIConfig = OpenAIConfig()
+
     init {
         instance = this
 
         val prefs = application.getSharedPreferences("mlcchat_prefs", Context.MODE_PRIVATE)
         systemPrompt = prefs.getString(SYSTEM_PROMPT_KEY, DEFAULT_SYSTEM_PROMPT) ?: DEFAULT_SYSTEM_PROMPT
+        openAIConfig.apiKey = prefs.getString("openai_api_key", "") ?: ""
+        openAIConfig.assistantId = prefs.getString("openai_assistant_id", "") ?: ""
 
         val web3j = Web3j.build(HttpService("https://base-mainnet.infura.io/v3/09d94d3208d44437bd0e793c6929cd04")) // Replace with your RPC URL
         walletSDK = WalletSDK(context, web3j)
@@ -101,12 +106,25 @@ Keep it confident, witty, and simple with a dash of sci‑fi. Use ASCII emoticon
         prefs.edit().putString(SYSTEM_PROMPT_KEY, newPrompt).apply()
     }
 
+    fun saveOpenAIConfig(apiKey: String, assistantId: String) {
+        openAIConfig.apiKey = apiKey
+        openAIConfig.assistantId = assistantId
+        val prefs = application.getSharedPreferences("mlcchat_prefs", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("openai_api_key", apiKey)
+            .putString("openai_assistant_id", assistantId)
+            .apply()
+    }
+
     fun signMessage(message: String, onResult: (String) -> Unit, onError: (Throwable) -> Unit) {
+        Log.d("ToolCall", "Signing message: $message")
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val result = walletSDK.signMessage(message)
+                Log.d("ToolCall", "Message signed successfully: $result")
                 onResult(result)
             } catch (e: Exception) {
+                Log.e("ToolCall", "Error signing message: ${e.message}")
                 onError(e)
             }
         }
@@ -118,6 +136,7 @@ Keep it confident, witty, and simple with a dash of sci‑fi. Use ASCII emoticon
         onResult: (String) -> Unit,
         onError: (Throwable) -> Unit
     ) {
+        Log.d("ToolCall", "Sending Ether - To: $toAddress, Value: $valueInWei wei")
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val result = walletSDK.sendTransaction(
@@ -125,8 +144,10 @@ Keep it confident, witty, and simple with a dash of sci‑fi. Use ASCII emoticon
                     value = valueInWei,
                     data = "" // Optional transaction data, can leave blank
                 )
+                Log.d("ToolCall", "Transaction successful: $result")
                 onResult(result) // result is the transaction hash
             } catch (e: Exception) {
+                Log.e("ToolCall", "Error sending Ether: ${e.message}")
                 onError(e)
             }
         }
@@ -992,6 +1013,7 @@ Keep it confident, witty, and simple with a dash of sci‑fi. Use ASCII emoticon
     }
 
     fun showSystemAlert(title: String, message: String) {
+        Log.d("ToolCall", "Showing system alert - $title: $message")
         viewModelScope.launch {
             // Example implementation using a Toast
             // Replace this with a proper modal dialog or Compose AlertDialog if needed
@@ -1059,4 +1081,10 @@ data class ParamsRecord(
 
 data class ParamsConfig(
     @SerializedName("records") val paramsRecords: List<ParamsRecord>
+)
+
+data class OpenAIConfig(
+    var apiKey: String = "",
+    var assistantId: String = "",
+    var currentThreadId: String = ""
 )

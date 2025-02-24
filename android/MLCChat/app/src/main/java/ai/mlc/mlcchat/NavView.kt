@@ -15,5 +15,7 @@ fun NavView(appViewModel: AppViewModel = viewModel()) {
         composable("home") { StartView(navController, appViewModel) }
         composable("chat") { ChatView(navController, appViewModel.chatState) }
         composable("prompt") { PromptView(navController, appViewModel) }
+        composable("openai-config") { OpenAIConfigView(navController, appViewModel) }
+        composable("openai-chat") { OpenAIChatView(navController, appViewModel) }
     }
 }

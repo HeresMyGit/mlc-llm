@@ -32,18 +32,23 @@
         },
         {
             "model": "HF://mlc-ai/DeepSeek-V2-Lite-Chat-q4f16_1-MLC",
-            "estimated_vram_bytes": 2679979417,
+            "estimated_vram_bytes": 41151318830,
             "model_id": "DeepSeek-V2-Lite-Chat-q4f16_1-MLC"
         },
         {
             "model": "HF://mlc-ai/DeepSeek-R1-Distill-Llama-8B-q4f16_1-MLC",
-            "estimated_vram_bytes": 2679979417,
+            "estimated_vram_bytes": 4115131883,
             "model_id": "DeepSeek-R1-Distill-Llama-8B-q4f16_1-MLC"
         },
         {
             "model": "HF://mlc-ai/DeepSeek-V2-Lite-Chat-q0f16-MLC",
-            "estimated_vram_bytes": 2679979417,
+            "estimated_vram_bytes": 41151318830,
             "model_id": "DeepSeek-V2-Lite-Chat-q0f16-MLC"
+        },
+        {
+            "model": "HF://mlc-ai/gorilla-openfunctions-v1-q4f16_1-MLC",
+            "estimated_vram_bytes": 4115131883,
+            "model_id": "gorilla-openfunctions-v1-q4f16_1-MLC"
         },
         {
             "model": "HF://mlc-ai/Mistral-7B-Instruct-v0.3-q4f16_1-MLC",

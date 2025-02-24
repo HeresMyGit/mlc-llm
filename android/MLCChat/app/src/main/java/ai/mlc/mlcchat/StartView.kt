@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -74,7 +75,25 @@ fun StartView(
                 .padding(paddingValues)
                 .padding(horizontal = 10.dp)
         ) {
-            Text(text = "Model List", modifier = Modifier.padding(top = 10.dp))
+            // Remote Agents Section
+            Text(
+                text = "Remote Agents",
+                modifier = Modifier.padding(top = 10.dp),
+                style = MaterialTheme.typography.titleMedium
+            )
+            
+            RemoteAgentView(
+                navController = navController,
+                appViewModel = appViewModel
+            )
+            
+            Divider(modifier = Modifier.padding(vertical = 10.dp))
+            
+            // Local Models Section
+            Text(
+                text = "Local Models",
+                style = MaterialTheme.typography.titleMedium
+            )
             LazyColumn() {
                 items(items = appViewModel.modelList,
                     key = { modelState -> modelState.id }
@@ -93,6 +112,71 @@ fun StartView(
                 onConfirmation = { appViewModel.copyError() },
                 error = appViewModel.errorMessage()
             )
+        }
+    }
+}
+
+@Composable
+fun RemoteAgentView(
+    navController: NavController,
+    appViewModel: AppViewModel
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "OpenAI GPT",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                if (appViewModel.openAIConfig.apiKey.isEmpty()) {
+                    Text(
+                        text = "Configure API Key",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                } else {
+                    Text(
+                        text = if (appViewModel.openAIConfig.assistantId.isNotEmpty()) 
+                            "Using Custom Assistant" else "Using GPT-4",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            
+            Row {
+                IconButton(
+                    onClick = { navController.navigate("openai-config") }
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Settings,
+                        contentDescription = "Configure OpenAI"
+                    )
+                }
+                
+                IconButton(
+                    onClick = { 
+                        if (appViewModel.openAIConfig.apiKey.isNotEmpty()) {
+                            navController.navigate("openai-chat")
+                        } else {
+                            navController.navigate("openai-config")
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Chat,
+                        contentDescription = "Start OpenAI Chat"
+                    )
+                }
+            }
         }
     }
 }
