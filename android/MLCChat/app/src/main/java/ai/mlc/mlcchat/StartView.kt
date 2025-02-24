@@ -133,7 +133,7 @@ fun RemoteAgentView(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "OpenAI GPT",
+                    text = "ChadGPT",
                     style = MaterialTheme.typography.bodyLarge
                 )
                 if (appViewModel.openAIConfig.apiKey.isEmpty()) {
@@ -145,7 +145,7 @@ fun RemoteAgentView(
                 } else {
                     Text(
                         text = if (appViewModel.openAIConfig.assistantId.isNotEmpty()) 
-                            "Using Custom Assistant" else "Using GPT-4",
+                            "Using Chad Assistant" else "Using Chad",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -158,7 +158,7 @@ fun RemoteAgentView(
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Settings,
-                        contentDescription = "Configure OpenAI"
+                        contentDescription = "Configure ChadGPT"
                     )
                 }
                 
@@ -173,7 +173,7 @@ fun RemoteAgentView(
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Chat,
-                        contentDescription = "Start OpenAI Chat"
+                        contentDescription = "Start ChadGPT Chat"
                     )
                 }
             }

@@ -39,6 +39,7 @@ fun OpenAIChatView(
 ) {
     val messages = remember { mutableStateListOf<MessageData>() }
     var isGenerating by remember { mutableStateOf(false) }
+    var currentStreamingMessage by remember { mutableStateOf("") }
     val localFocusManager = LocalFocusManager.current
     val client = remember { OkHttpClient() }
     val scope = rememberCoroutineScope()
@@ -57,6 +58,7 @@ fun OpenAIChatView(
         
         messages.add(MessageData(MessageRole.User, userMessage))
         isGenerating = true
+        currentStreamingMessage = ""
 
         scope.launch {
             // Step 1: Add message to thread
@@ -92,21 +94,25 @@ fun OpenAIChatView(
                         appViewModel.openAIConfig.apiKey
                     ) { completed ->
                         if (completed) {
-                            // Step 4: Retrieve messages
-                            retrieveMessages(
+                            // Step 4: Retrieve messages with streaming
+                            retrieveMessagesWithStreaming(
                                 client,
                                 appViewModel.openAIConfig.currentThreadId,
                                 appViewModel.openAIConfig.apiKey,
-                                appViewModel
-                            ) { newMessages ->
-                                scope.launch {
-                                    // Add only the latest assistant message
-                                    newMessages.firstOrNull { it.role == "assistant" }?.let { assistantMessage ->
-                                        messages.add(MessageData(MessageRole.Assistant, assistantMessage.content))
+                                appViewModel,
+                                onPartialMessage = { partialMessage ->
+                                    scope.launch {
+                                        currentStreamingMessage = partialMessage
                                     }
-                                    isGenerating = false
+                                },
+                                onComplete = { finalMessage ->
+                                    scope.launch {
+                                        messages.add(MessageData(MessageRole.Assistant, finalMessage))
+                                        currentStreamingMessage = ""
+                                        isGenerating = false
+                                    }
                                 }
-                            }
+                            )
                         }
                     }
                 }
@@ -120,7 +126,7 @@ fun OpenAIChatView(
                 title = {
                     Text(
                         text = if (appViewModel.openAIConfig.assistantId.isEmpty()) 
-                            "OpenAI GPT-4" else "OpenAI Assistant",
+                            "ChadGPT" else "ChadGPT",
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                 },
@@ -191,11 +197,20 @@ fun OpenAIChatView(
 
                 if (isGenerating) {
                     item {
-                        Text(
-                            text = "Generating...",
-                            modifier = Modifier.padding(8.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        if (currentStreamingMessage.isNotEmpty()) {
+                            MessageView(
+                                messageData = MessageData(
+                                    MessageRole.Assistant,
+                                    currentStreamingMessage
+                                )
+                            )
+                        } else {
+                            Text(
+                                text = "Generating...",
+                                modifier = Modifier.padding(8.dp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -600,12 +615,13 @@ data class AssistantMessage(
     val content: String
 )
 
-private fun retrieveMessages(
+private fun retrieveMessagesWithStreaming(
     client: OkHttpClient,
     threadId: String,
     apiKey: String,
     appViewModel: AppViewModel,
-    onComplete: (List<AssistantMessage>) -> Unit
+    onPartialMessage: (String) -> Unit,
+    onComplete: (String) -> Unit
 ) {
     Log.d("ToolCall", "Retrieving messages for thread: $threadId")
     val request = Request.Builder()
@@ -618,7 +634,7 @@ private fun retrieveMessages(
     client.newCall(request).enqueue(object : Callback {
         override fun onFailure(call: Call, e: IOException) {
             Log.e("ToolCall", "Failed to retrieve messages: ${e.message}")
-            onComplete(emptyList())
+            onComplete("")
         }
 
         override fun onResponse(call: Call, response: Response) {
@@ -626,102 +642,46 @@ private fun retrieveMessages(
                 try {
                     val json = JSONObject(body)
                     val messages = json.getJSONArray("data")
-                    val messageList = mutableListOf<AssistantMessage>()
+                    var finalMessage = ""
                     
-                    Log.d("ToolCall", "Processing ${messages.length()} messages")
-                    
+                    // Get the latest assistant message
                     for (i in 0 until messages.length()) {
                         val message = messages.getJSONObject(i)
                         val role = message.getString("role")
                         
-                        // Handle tool calls if present
-                        if (message.has("tool_calls")) {
-                            val toolCalls = message.getJSONArray("tool_calls")
-                            Log.d("ToolCall", "Found ${toolCalls.length()} tool calls in message")
-                            
-                            for (j in 0 until toolCalls.length()) {
-                                val toolCall = toolCalls.getJSONObject(j)
-                                val function = toolCall.getJSONObject("function")
-                                val functionName = function.getString("name")
-                                val arguments = function.getString("arguments")
-                                
-                                Log.d("ToolCall", "Executing function: $functionName with args: $arguments")
-                                
-                                // Parse arguments as JSON
-                                val argsJson = JSONObject(arguments)
-                                
-                                when (functionName) {
-                                    "signMessage" -> {
-                                        val messageToSign = argsJson.getString("message")
-                                        Log.d("ToolCall", "Signing message: $messageToSign")
-                                        appViewModel.signMessage(
-                                            message = messageToSign,
-                                            onResult = { result ->
-                                                Log.d("ToolCall", "Message signed successfully: $result")
-                                                messageList.add(AssistantMessage(role, "Message signed: $result"))
-                                            },
-                                            onError = { error ->
-                                                Log.e("ToolCall", "Error signing message: ${error.message}")
-                                                messageList.add(AssistantMessage(role, "Error signing message: ${error.message}"))
-                                            }
-                                        )
-                                    }
-                                    "sendEther" -> {
-                                        val toAddress = argsJson.getString("to")
-                                        val amount = argsJson.getDouble("amount")
-                                        val valueInWei = (amount * 1e18).toBigDecimal().toPlainString()
-                                        Log.d("ToolCall", "Sending $amount ETH to $toAddress")
-                                        
-                                        appViewModel.sendEther(
-                                            toAddress = toAddress,
-                                            valueInWei = valueInWei,
-                                            onResult = { txHash ->
-                                                Log.d("ToolCall", "Transaction successful: $txHash")
-                                                messageList.add(AssistantMessage(role, "Transaction successful: $txHash"))
-                                            },
-                                            onError = { error ->
-                                                Log.e("ToolCall", "Error sending Ether: ${error.message}")
-                                                messageList.add(AssistantMessage(role, "Error sending Ether: ${error.message}"))
-                                            }
-                                        )
-                                    }
-                                    "showAlert" -> {
-                                        val alertText = argsJson.getString("text")
-                                        Log.d("ToolCall", "Showing alert: $alertText")
-                                        appViewModel.showSystemAlert(
-                                            title = "Chad says",
-                                            message = alertText
-                                        )
-                                        messageList.add(AssistantMessage(role, "Alert displayed: $alertText"))
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Handle regular content
-                        if (message.has("content") && !message.isNull("content")) {
+                        if (role == "assistant" && message.has("content") && !message.isNull("content")) {
                             val contentArray = message.getJSONArray("content")
                             if (contentArray.length() > 0) {
                                 val content = contentArray
                                     .getJSONObject(0)
                                     .getJSONObject("text")
                                     .getString("value")
-                                Log.d("ToolCall", "Adding message content: $content")
-                                messageList.add(AssistantMessage(role, content))
+                                
+                                // Stream the message word by word
+                                val words = content.split(" ")
+                                var currentText = ""
+                                
+                                words.forEachIndexed { index, word ->
+                                    currentText += if (index == 0) word else " $word"
+                                    onPartialMessage(currentText)
+                                    Thread.sleep(50) // Add a small delay between words
+                                }
+                                
+                                finalMessage = content
+                                break
                             }
                         }
                     }
                     
-                    Log.d("ToolCall", "Completed processing messages, found ${messageList.size} messages")
-                    onComplete(messageList)
+                    onComplete(finalMessage)
                 } catch (e: Exception) {
                     Log.e("ToolCall", "Error processing messages: ${e.message}")
                     e.printStackTrace()
-                    onComplete(emptyList())
+                    onComplete("")
                 }
             } ?: run {
                 Log.e("ToolCall", "Empty response body in message retrieval")
-                onComplete(emptyList())
+                onComplete("")
             }
         }
     })
